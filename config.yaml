@@ -1,0 +1,47 @@
+app:
+  host: "0.0.0.0"
+  port: 3000
+  name: "NL2KQL Service"
+
+azure:
+  appInsights:
+    # Connection string from Azure Portal > Application Insights > Connection Strings
+    connectionString: "${APPINSIGHTS_CONNECTION_STRING}"
+    # API URL (usually https://api.applicationinsights.io)
+    apiUrl: "https://api.applicationinsights.io"
+    # API Version
+    apiVersion: "v1"
+
+llm:
+  # Provider: openai, anthropic, or custom (for opencode.ai, MiniMax, etc.)
+  provider: "custom"
+  # Model to use (e.g., "MiniMax M2.5 Free", "gpt-4", etc.)
+  model: "minimax-m2.5-free"
+  # Custom API base URL (leave empty for default OpenAI)
+  baseURL: "https://opencode.ai/zen/v1"
+  # Temperature for LLM (lower = more deterministic)
+  temperature: 0.1
+  # Maximum tokens in response
+  maxTokens: 2000
+
+security:
+  # API keys for authentication (comma-separated in env var)
+  apiKeys:
+    - "${API_KEY}"
+  rateLimit:
+    # Time window in milliseconds
+    windowMs: 60000
+    # Maximum requests per window
+    maxRequests: 100
+
+logging:
+  level: "info"
+  format: "json"
+
+features:
+  schemaCache:
+    enabled: true
+    # Time to live for cached schemas in minutes
+    ttlMinutes: 60
+    # Maximum number of tables to cache
+    maxTables: 100
