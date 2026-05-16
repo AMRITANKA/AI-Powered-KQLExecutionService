@@ -18,7 +18,7 @@ Natural Language to Kusto Query Language (KQL) conversion and execution service 
 
 ## Overview
 
-NL2KQL is a REST API service that allows you to query Azure Application Insights using natural language. Instead of writing complex KQL queries, you can simply describe what you want to know in plain English, and the AI will generate and execute the corresponding KQL query.
+AI-Powered-KQLExecutionService is a REST API service that allows you to query Azure Application Insights using natural language. Instead of writing complex KQL queries, you can simply describe what you want to know in plain English, and the AI will generate and execute the corresponding KQL query.
 
 **Example:**
 - Input: "Show me recent errors"

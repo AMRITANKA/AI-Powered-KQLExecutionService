@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-- **Project Name**: NL2KQL - Natural Language to Kusto Query Language
+- **Project Name**: AI-Powered-KQLExecutionService - Natural Language to Kusto Query Language
 - **Type**: REST API Service (Node.js/Express)
 - **Core Functionality**: Convert natural language queries to KQL and execute against Azure Application Insights
 - **Target Users**: DevOps engineers, SREs, security analysts, and developers who need to query Azure logs without KQL expertise
