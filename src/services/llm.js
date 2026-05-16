@@ -11,6 +11,21 @@ const { logger } = require('../middleware/logger');
 const { AppError } = require('../middleware/errorHandler');
 const { HTTP_STATUS } = require('../constants');
 
+/**
+  * Strip markdown fences and preamble text from LLM KQL response
+*/
+
+function _cleanKqlResponse(raw) {
+  return raw
+  .replace(/^```kql\s*/im, '')
+  .replace(/^```kusto\s*$/im, '')
+  .replace(/^```\s*/im, '')
+  .replace(/^```\s*$/im, '')
+  .replace(/^(Here is|Here's|The KQL query is)[^:]*:\s*/i, '')
+  .replace(/\n{3,}/g, '\n')
+  .trim();
+}
+
 class LLMService {
   constructor() {
     this.provider = config.get('llm.provider', 'openai');
@@ -82,28 +97,31 @@ class LLMService {
       max_tokens: config.get('llm.maxTokens', 2000)
     });
 
-    logger.info('LLM response', { response: JSON.stringify(response).substring(0, 500) });
-
-    // Handle various response formats
-    let kql = null;
-
-    if (response.choices && response.choices.length > 0) {
-      kql = response.choices[0]?.message?.content?.trim();
-    } else if (response.content) {
-      // Alternative format
-      kql = response.content.trim();
-    } else if (response.text) {
-      kql = response.text.trim();
+    // Log token usage for cost monitoring
+    if (response.usage) {
+      logger.info('LLM token usage', {
+        promptTokens: response.usage.promptTokens,
+        completionTokens: response.usage.completionTokens,
+        totalTokens: response.usage.totalTokens,
+        model: config.get('llm.model', 'gpt-4')
+      });
     }
 
-    if (!kql) {
+    // Handle various response formats
+    let raw = null;
+    if (response.choices && response.choices.length > 0) {
+      raw = response.choices[0].message?.content?.trim();
+    }else if (response.content) {
+      raw = typeof response.content === 'string' ? response.content.trim() : null;
+    } else if (response.text) {
+      raw = response.text.trim();
+    }
+
+    if (!raw) {
       logger.error('Empty LLM response', { response: JSON.stringify(response) });
       throw new AppError('Empty response from LLM', HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
-
-    // Clean up markdown code blocks if present
-    kql = kql.replace(/^```kql\s*/i, '').replace(/^```\s*$/i, '').replace(/```$/i, '').trim();
-
+    const kql = _cleanKqlResponse(raw);
     logger.info('KQL generated successfully', { kql: kql.substring(0, 100) });
     return kql;
   }
@@ -125,13 +143,125 @@ class LLMService {
       max_tokens: config.get('llm.maxTokens', 2000)
     });
 
-    const kql = response.content[0]?.text?.trim();
-    if (!kql) {
-      throw new AppError('Empty response from LLM', HTTP_STATUS.INTERNAL_SERVER_ERROR);
+    const raw = response.content[0]?.text?.trim();
+    if (!raw) {
+       throw new AppError('Empty response from LLM', HTTP_STATUS.INTERNAL_SERVER_ERROR);
     }
-
+    const kql = _cleanKqlResponse(raw);
     logger.info('KQL generated successfully', { kql: kql.substring(0, 100) });
     return kql;
+  }
+
+  /**
+   * Get key columns for project clause based on table type
+   * Returns a dynamic list of important columns for each table
+   */
+  _getKeyColumns(tableName) {
+    const columnMap = {
+      requests: ['timestamp', 'id', 'name', 'url', 'resultCode', 'success', 'duration', 'operation_Name', 'operation_Id', 'cloud_RoleName','appName'],
+      dependencies: ['timestamp', 'name', 'type', 'target', 'duration', 'success', 'resultCode', 'operation_Id'],
+      exceptions: ['appId', 'appName', 'cloud_RoleName', 'details','innermostMessage', 'operation_Id', 'operation_Name', 'outerMessage', 'severityLevel', 'timestamp'],
+      traces: ['timestamp', 'message', 'severityLevel', 'operation_Name', 'operation_Id', 'cloud_RoleName', 'appId', 'appName'],
+      customEvents: ['timestamp', 'name', 'customDimensions'],
+      customMetrics: ['timestamp', 'name', 'value', 'customDimensions'],
+      availabilityResults: ['timestamp', 'name', 'location', 'success', 'duration'],
+      performanceCounters: ['timestamp', 'name', 'counter', 'value', 'instance'],
+      pageViews: ['timestamp', 'name', 'url', 'duration'],
+      browserTimings: ['timestamp', 'name', 'url', 'totalDuration']
+    };
+    return columnMap[tableName] || ['timestamp'];
+  }
+
+  /**
+   * Filter columns that actually exist in the schema
+   */
+  _filterExistingColumns(columns, schema) {
+    if (!schema) return columns;
+    return columns.filter(col => schema[col] !== undefined);
+  }
+
+  /**
+   * Build dynamic project clause from schema
+   */
+  _buildProjectClause(tableName, schema) {
+    const keyColumns = this._getKeyColumns(tableName);
+    const existingColumns = this._filterExistingColumns(keyColumns, schema);
+    if (existingColumns.length === 0) {
+      return '';
+    }
+    return `project ${existingColumns.join(', ')}`;
+  }
+
+  /**
+   * Generate dynamic examples based on actual schema
+   */
+  _buildDynamicExamples(schema) {
+    if (!schema) {
+      // No schema - use default examples
+      return FEW_SHOT_EXAMPLES.map(ex => ({
+        description: ex.description,
+        query: ex.query
+      })).join('\n\n');
+    }
+
+    // Detect table from schema keys
+    const tableName = this._detectTableFromSchema(schema);
+    const projectClause = this._buildProjectClause(tableName, schema);
+
+    // Build dynamic examples with actual project clause
+    const dynamicExamples = [
+      {
+        description: "Show failed requests in the last hour",
+        query: `requests
+| where timestamp > ago(1h)
+| where success == false
+| ${projectClause}
+| order by timestamp desc
+| take 100`
+      },
+      {
+        description: "Top exceptions by count in the last 24 hours",
+        query: `exceptions
+| where timestamp > ago(24h)
+| summarize OccurrenceCount = count() by type, message
+| top 10 by OccurrenceCount desc`
+      },
+      {
+        description: "Error logs in the last 2 hours",
+        query: `traces
+| where timestamp > ago(2h)
+| where severityLevel >= 3
+| ${projectClause}
+| order by timestamp desc
+| take 200`
+      }
+    ];
+
+    return dynamicExamples.map(ex => `User: ${ex.description}\nKQL: ${ex.query}`).join('\n\n');
+  }
+
+  /**
+   * Detect table name from schema keys
+   */
+  _detectTableFromSchema(schema) {
+    const knownTables = {
+      success: 'requests',
+      resultCode: 'requests',
+      duration: 'requests',
+      type: 'dependencies',
+      target: 'dependencies',
+      problemId: 'exceptions',
+      severityLevel: 'traces',
+      name: 'customEvents',
+      value: 'customMetrics'
+    };
+
+    for (const [key, table] of Object.entries(knownTables)) {
+      if (schema[key]) {
+        return table;
+      }
+    }
+    return 'requests'; // default
   }
 
   /**
@@ -140,13 +270,9 @@ class LLMService {
   _buildSystemMessage(schema) {
     let message = KQL_SYSTEM_PROMPT;
 
-    // Add few-shot examples
+    // Add dynamic few-shot examples based on schema
     message += '\n\n## Examples:\n';
-    FEW_SHOT_EXAMPLES.forEach(example => {
-      message += `\nUser: ${example.description}\n`;
-      message += `Schema: ${JSON.stringify(example.schema)}\n`;
-      message += `KQL: ${example.query}\n`;
-    });
+    message += this._buildDynamicExamples(schema);
 
     // Add schema if provided
     if (schema) {

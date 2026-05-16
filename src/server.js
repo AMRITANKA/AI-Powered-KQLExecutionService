@@ -6,6 +6,7 @@
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const { randomUUID } = require('crypto');
 const config = require('./config');
 const { requestLogger, errorLogger, logger } = require('./middleware/logger');
 const { authenticate, optionalAuth } = require('./middleware/auth');
@@ -36,6 +37,13 @@ function createApp() {
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+  // Assign a unique request ID for end-to-end tracing
+  app.use((req, res, next) => {
+    req.requestId = req.header['x-request-id'] || randomUUID();
+    res.setHeader('X-Request-Id', req.requestId);
+    next();
+  });
+
   // Request logging
   app.use(requestLogger);
 
@@ -64,13 +72,15 @@ function startServer(app) {
   const host = config.get('app.host', '0.0.0.0');
   const port = config.get('app.port', 3000);
 
-  app.listen(port, host, () => {
+  const server =app.listen(port, host, () => {
     logger.info(`Server started on ${host}:${port}`, {
       host,
       port,
       env: process.env.NODE_ENV || 'development'
     });
   });
+
+  return server;
 }
 
 module.exports = { createApp, startServer };

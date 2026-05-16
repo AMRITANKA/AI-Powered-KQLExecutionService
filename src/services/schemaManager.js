@@ -7,6 +7,7 @@ const NodeCache = require('node-cache');
 const config = require('../config');
 const { appInsightsService } = require('./appInsights');
 const { logger } = require('../middleware/logger');
+const { APP_INSIGHTS_TABLES, APP_INSIGHTS_COLUMN_DESCRIPTIONS } = require('../constants');
 
 class SchemaManager {
   constructor() {
@@ -93,7 +94,7 @@ class SchemaManager {
   }
 
   /**
-   * Get context for LLM (schema info formatted for prompt)
+   * Get context for LLM (schema info with semantic column descriptions)
    */
   async getContextForLLM(tableName) {
     const schema = await this.getSchema(tableName);
@@ -101,15 +102,32 @@ class SchemaManager {
       return null;
     }
 
-    const columns = Object.entries(schema).map(([name, info]) => {
-      return `${name}: ${info.data_type}`;
-    }).join(', ');
+    const columnDescriptions = APP_INSIGHTS_COLUMN_DESCRIPTIONS[tableName] || {};
+    const columnLines = Object.entries(schema).map(([name, info]) => {
+      const desc = columnDescriptions[name] ;
+      return desc
+        ? `- ${name}: ${info.data_type} // ${desc}`
+        : `- ${name}: ${info.data_type}`;
+    }).join('\n');
 
     return {
       table: tableName,
       columns: schema,
-      formatted: `Table: ${tableName}\nColumns: ${columns}`
+      formatted: `Table: ${tableName}\nColumns: ${columnLines}`
     };
+  }
+
+  /**
+   * Pre-warm schema cache for all known App Insights tables
+   * Call on startup (non-blocking)
+   */
+  async warmUp() {
+    logger.info('Warming up schema cache for App Insights tables');
+    const results = await Promise.allSettled(
+      APP_INSIGHTS_TABLES.map(table => this.getSchema(table))
+    );
+    const succeeded = results.filter(r => r.status === 'fulfilled' && r.value).length;
+    logger.info(`Schema cache warm-up completed', {succeeded}/${APP_INSIGHTS_TABLES.length} tables loaded`);
   }
 
   /**

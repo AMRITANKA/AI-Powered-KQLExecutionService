@@ -19,7 +19,7 @@ const router = express.Router();
 router.get('/', (req, res) => {
   res.json({
     status: 'healthy',
-    service: config.get('app.name', 'NL2KQL'),
+    service: config.get('app.name', 'AI-Powered-KQLExecutionService'),
     timestamp: new Date().toISOString()
   });
 });
@@ -97,5 +97,21 @@ router.get('/config', (req, res) => {
     config: safeConfig
   });
 });
+
+/**
+ * GET /health/metrics
+ * Runtime metrics : schema cache stats, uptime, memory usage
+ */
+router.get('/metrics', (req, res) => {
+  const stats = schemaManager.getStats();
+  res.json({
+    schemaCache: stats,
+    uptime: process.uptime(),
+    memoryMB: Math.round((process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2)),
+    nodeVersion: process.version,
+    timestamp: new Date().toISOString()
+  });
+}
+);
 
 module.exports = router;

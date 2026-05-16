@@ -1,5 +1,5 @@
 /**
- * Unit Tests for NL2KQL Service
+ * Unit Tests for AI-Powered-KQLExecutionService
  */
 
 const { describe, it, beforeEach } = require('node:test');
@@ -31,18 +31,18 @@ describe('Constants', () => {
 describe('KQL System Prompt', () => {
   const { KQL_SYSTEM_PROMPT } = require('../src/constants');
 
-  it('should include join condition rules', () => {
-    assert.ok(KQL_SYSTEM_PROMPT.includes('JOIN Conditions'));
-    assert.ok(KQL_SYSTEM_PROMPT.includes('and'));
-    assert.ok(KQL_SYSTEM_PROMPT.includes('or'));
+  it('should include critical KQL rules', () => {
+    assert.ok(KQL_SYSTEM_PROMPT.includes('timestamp'));
+    assert.ok(KQL_SYSTEM_PROMPT.includes('join'));
   });
 
-  it('should include column validation rules', () => {
-    assert.ok(KQL_SYSTEM_PROMPT.includes('Column Validation'));
+  it('should include exceptions table guidance', () => {
+    assert.ok(KQL_SYSTEM_PROMPT.includes('exceptions'));
+    assert.ok(KQL_SYSTEM_PROMPT.includes('details'));
   });
 
-  it('should include reserved word rules', () => {
-    assert.ok(KQL_SYSTEM_PROMPT.includes('Reserved Words'));
+  it('should include guardrails', () => {
+    assert.ok(KQL_SYSTEM_PROMPT.includes('GUARDRAILS'));
   });
 });
 

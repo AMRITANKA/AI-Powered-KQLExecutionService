@@ -52,7 +52,7 @@ class Config {
       app: {
         host: config.app?.host || '0.0.0.0',
         port: parseInt(process.env.PORT, 10) || config.app?.port || 3000,
-        name: config.app?.name || 'NL2KQL Service'
+        name: config.app?.name || 'AI-Powered-KQLExecutionService'
       },
       azure: {
         appInsights: {

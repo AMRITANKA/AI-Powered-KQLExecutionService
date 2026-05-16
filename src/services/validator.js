@@ -79,6 +79,10 @@ class Validator {
       errors.push('Unclosed double quote in query');
     }
 
+    // Catch Log Annlytics / Sentinel column used instead of App Insights columns
+    if (/\bTimeGenerated\b/.test(trimmedKql)) {
+      errors.push('App Insights uses "timestamp" or "TimeGenerated" as the time column. Please verify the correct column name for your schema.');
+    }
     return errors;
   }
 
@@ -191,6 +195,7 @@ class Validator {
    */
   _getWarnings(kql) {
     const warnings = [];
+    const upper = kql.toUpperCase();
 
     // Warn about using *
     if (kql.includes('project *')) {
@@ -198,8 +203,15 @@ class Validator {
     }
 
     // Warn about missing time filter
-    if (!kql.includes('ago') && !kql.includes('TimeGenerated') && !kql.includes('timestamp')) {
-      warnings.push('Consider adding a time filter (e.g., | where TimeGenerated > ago(1h))');
+    if (!upper.includes('AGO(') && !upper.includes('DATETIME(') && !upper.includes('STARTOFDAY(') && !upper.includes('TIMEGENERATED')) {
+      warnings.push('No time range filter detected. Queries without time filters may time out or return stale data. Add: | where timestamp > ago(1d)');
+    }
+
+    // Warn about unbounded queries (no take / top / limit/ summarize)
+    const hasBound = upper.includes('TAKE ') || upper.includes('TOP ') ||
+                     upper.includes('LIMIT ') || upper.includes('SUMMARIZE ');
+    if (!hasBound){
+      warnings.push('Query has no TAKE, TOP, or SUMMARIZE . Add a row limit to avoid large result sets.');
     }
 
     // Warn about case sensitivity

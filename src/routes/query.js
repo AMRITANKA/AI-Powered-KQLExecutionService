@@ -12,9 +12,77 @@ const { validator } = require('../services/validator');
 const { formatOutput } = require('../utils/formatters');
 const { logger } = require('../middleware/logger');
 const { AppError } = require('../middleware/errorHandler');
-const { HTTP_STATUS, ERROR_MESSAGES, QUERY_TYPES, OUTPUT_FORMATS, DEFAULTS } = require('../constants');
+const {
+  HTTP_STATUS,
+  ERROR_MESSAGES,
+  QUERY_TYPES,
+  OUTPUT_FORMATS,
+  DEFAULTS,
+  APP_INSIGHTS_TABLES,
+  INTENT_PATTERNS
+} = require('../constants');
 
 const router = express.Router();
+
+/**
+ * Sanitize natural language input to prevent KQL injection via prompt
+ */
+function sanitizeNaturalQuery(query) {
+  // Reject inputs that look like raw KQL injection / mangement commands
+  const kqlPatterns = [
+    /\|\s*drop\s+table/i,
+    /\|\s*delete\s+from/i,
+    /\|\s*set\s+/i,
+    /\.\w+/,                 // management commands like .drop, .create
+    /;\s*\w/                  // statement separator (KQL is single-statement)
+  ];
+  for (const pattern of kqlPatterns) {
+    if (pattern.test(query)) {
+      throw new AppError('Query contains disallowed patterns', HTTP_STATUS.BAD_REQUEST);
+    }
+  }
+  if (query.length > 2000) {
+    throw new AppError('Query exceeds maximum length of 2000 characters', HTTP_STATUS.BAD_REQUEST);
+  }
+  return query.trim();
+}
+
+/**
+ * Classify user intent to pick most relevent few-shot examples
+ */
+function classifyIntent(query) {
+  for (const [intent, pattern] of Object.entries(INTENT_PATTERNS)) {
+    if (pattern.test(query)) {
+      return intent;
+    }
+  }
+  return 'general';
+}
+
+/**
+ * Execute KQL with LLM self-correction retry on App Insights errors
+ */
+async function executeWithRetry(kql, llmService, originalQuery,schemaContext, maxRetries = 2) {
+  let lastError = null;
+  let currentKql = kql;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await appInsightsService.executeQuery(currentKql, { limit: DEFAULTS.DEFAULT_LIMIT });
+    } catch (error) {
+      if(attempt === maxRetries) throw error;
+      lastError = error.message;
+      logger.warn ('Query execution failed, asking LLM to self-correct',{
+         attempt,
+         error: lastError,
+         kql: currentKql.substring(0, 200)
+      });
+      const fixPrompt = `The following KQL query failed to execute on Azure Application Insights with error: "${lastError}". Please analyze the error and suggest a corrected version of the KQL query. Original natural language query: "${originalQuery}". Current KQL: "${currentKql}". Schema context: ${schemaContext ? JSON.stringify(schemaContext) : 'none'}. Please provide only the corrected KQL without any explanations.`;
+      currentKql = await llmService.generateKQL(fixPrompt, schemaContext);
+    }
+  }
+}
+
 
 /**
  * POST /api/v1/query

@@ -1,5 +1,5 @@
 /**
- * NL2KQL - Natural Language to KQL Query Execution Service
+ * AI-Powered KQL Query Execution Service
  * Main entry point
  */
 
@@ -21,7 +21,7 @@ try {
 
 // Create and start server
 const app = createApp();
-startServer(app);
+const server = startServer(app);
 
 // Handle uncaught errors
 process.on('uncaughtException', (error) => {
@@ -29,19 +29,31 @@ process.on('uncaughtException', (error) => {
   process.exit(1);
 });
 
-process.on('unhandledRejection', (reason, promise) => {
+process.on('unhandledRejection', (reason) => {
   logger.error('Unhandled rejection', { reason: String(reason) });
 });
 
-// Handle graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  process.exit(0);
-});
+// Graceful shutdown with connection draining
+function gracefulShutdown(signal){
+  logger.info(`Received ${signal}, draining connections...`);
+  server.close(() => {
+    logger.info('Forced shutdown after timeout');
+    process.exit(0);
+  });
+  // Force-exit after 30 seconds if connection do not drain
+  setTimeout(() => {
+    logger.error('Forcing shutdown after timeout');
+    process.exit(1);
+  }, 30000).unref();
+}
 
-process.on('SIGINT', () => {
-  logger.info('SIGINT received, shutting down gracefully');
-  process.exit(0);
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// Non-blocking schema cache warm-up
+const { schemaManager } = require('./services/schemaManager');
+schemaManager.warmUp().catch((error) => {
+  logger.warn ('Schema cache warm-up failed', { error: error.message });
 });
 
 module.exports = { app };

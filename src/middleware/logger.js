@@ -5,6 +5,7 @@
 
 const winston = require('winston');
 const config = require('../config');
+const { request } = require('express');
 
 const logger = winston.createLogger({
   level: config.get('logging.level', 'info'),
@@ -55,7 +56,8 @@ function requestLogger(req, res, next) {
       status: res.statusCode,
       duration: `${duration}ms`,
       ip: req.ip,
-      userAgent: req.get('user-agent')
+      userAgent: req.get('user-agent'),
+      requestId: req.requestId
     });
   });
 
@@ -71,7 +73,7 @@ function errorLogger(err, req, res, next) {
     stack: err.stack,
     method: req.method,
     url: req.url,
-    body: req.body
+    requestId: req.requestId,
   });
   next(err);
 }

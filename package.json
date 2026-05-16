@@ -1,5 +1,5 @@
 {
-  "name": "nl2kql",
+  "name": "AI-Powered-KQLExecutionService",
   "version": "1.0.0",
   "description": "AI-Powered KQL Query Execution with Natural Language to KQL Conversion",
   "main": "src/index.js",

@@ -91,17 +91,20 @@ function formatTable(data) {
     });
   });
 
-  // Create table config
+  // Create table config - only pass column-width array (no unsupported properties)
+  const columnWidths = headerArray.map((header, index) =>
+  Math.min(
+    50,
+    Math.max(
+      10,
+      header.length,
+      ...rows.map(row => (row[index] || '').toString().length)
+    )
+  )
+  );
+
   const config = {
-    columns: headerArray.map((header, index) => ({
-      header,
-      width: Math.max(
-        header.length,
-        ...rows.map(row => (row[index] || '').toString().length)
-      ),
-      minWidth: 10,
-      maxWidth: 50
-    }))
+    columns: columnWidths.map(width => ({ width }))
   };
 
   return table([headerArray, ...rows], config);
