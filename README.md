@@ -1,4 +1,4 @@
-# NL2KQL - AI-Powered KQL Query Execution
+# AI-Powered KQL Query Execution
 
 Natural Language to Kusto Query Language (KQL) conversion and execution service for Azure Application Insights.
 
